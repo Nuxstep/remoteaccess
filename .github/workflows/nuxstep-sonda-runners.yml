@@ -1,0 +1,32 @@
+# Sonda de disponibilidade de runner, nao de build.
+#
+# Existe porque o job de macOS ARM64 foi cancelado duas vezes sem runner, com a
+# anotacao "The job was not acquired by Runner of type hosted even after
+# multiple attempts" e um aviso do GitHub citando capacidade de macOS arm64.
+# Antes de decidir pagar por larger runner, mede-se QUAL alvo consegue runner:
+# se o host Intel atende, da para compilar para arm64 cruzado e de graca.
+#
+# Cada job dura segundos. Rodar quando houver duvida de capacidade.
+name: nuxstep sonda runners
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonda:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, macos-latest, windows-2022]
+    steps:
+      - name: Quem me atendeu
+        shell: bash
+        run: |
+          echo "runner: ${RUNNER_OS} ${RUNNER_ARCH}"
+          uname -ms || true
