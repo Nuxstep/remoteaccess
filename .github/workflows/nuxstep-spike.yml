@@ -28,6 +28,11 @@ permissions:
   contents: read
 
 env:
+  # Usada pelo passo de toolchain do job de Windows. As variaveis daqui sao
+  # derivadas das referencias env.* dos passos copiados, nao escolhidas a mao:
+  # faltar uma faz o passo receber string vazia e falhar com mensagem que nao
+  # aponta para a causa ("'toolchain' is a required input").
+  SCITER_RUST_VERSION: "1.75"
   RUST_VERSION: "1.75" # sciter failed on m1 with 1.78 because of https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
@@ -483,7 +488,11 @@ jobs:
         job:
           - {
               target: aarch64-apple-darwin,
-              os: macos-14,
+              # macos-15, e nao o macos-14 do upstream: o GitHub retirou esse
+              # label e o job era cancelado em 1 segundo, sem runner e sem log
+              # ("The configuration 'macos-14-arm64-us-default' is not
+              # supported" na anotacao do check). macos-15 e arm64 por padrao.
+              os: macos-15,
               extra-build-args: "--screencapturekit",
               extra-cargo-features: ",screencapturekit",
               arch: aarch64,
