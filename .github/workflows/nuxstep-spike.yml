@@ -488,11 +488,19 @@ jobs:
         job:
           - {
               target: aarch64-apple-darwin,
-              # macos-15, e nao o macos-14 do upstream: o GitHub retirou esse
-              # label e o job era cancelado em 1 segundo, sem runner e sem log
-              # ("The configuration 'macos-14-arm64-us-default' is not
-              # supported" na anotacao do check). macos-15 e arm64 por padrao.
-              os: macos-15,
+              # macos-latest (hoje a imagem macos-26-arm64), e nao os labels
+              # fixos. Medido com .github/workflows/nuxstep-sonda-runners.yml:
+              #   macos-14       -> label retirado, job cancelado em 1s
+              #   macos-15       -> arm64, mas 15 min na fila SEM runner, duas
+              #                     vezes ("The job was not acquired by Runner
+              #                     of type hosted even after multiple
+              #                     attempts" + aviso de capacidade arm64)
+              #   macos-latest   -> arm64, runner na hora
+              # O preco de usar o label movel e que a imagem muda sem aviso;
+              # em troca, e a unica fila arm64 gratuita com capacidade. Se um
+              # dia quebrar por versao nova de macOS, fixe a imagem que a sonda
+              # mostrar disponivel naquele momento.
+              os: macos-latest,
               extra-build-args: "--screencapturekit",
               extra-cargo-features: ",screencapturekit",
               arch: aarch64,
