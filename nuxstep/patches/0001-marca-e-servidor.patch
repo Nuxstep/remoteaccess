@@ -1,0 +1,52 @@
+diff --git a/src/common.rs b/src/common.rs
+index 4bc5bc2d..5208005c 100644
+--- a/src/common.rs
++++ b/src/common.rs
+@@ -2506,7 +2506,47 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
+     ThrottledInterval::new(i)
+ }
+ 
++// ---------------------------------------------------------------------------
++// Nuxstep: marca e servidor próprio.
++//
++// Em código e não por configuração porque o mecanismo oficial de "custom
++// client" valida a config contra uma chave pública embutida da RustDesk
++// (`read_custom_client` -> `sign::verify`): só a RustDesk Pro emite config
++// aceita.
++//
++// Não mexe no `hbb_common` porque ele é submódulo git. `APP_NAME` e
++// `PROD_RENDEZVOUS_SERVER` são `RwLock` graváveis em runtime, e a chave sai da
++// opção `key`, com `RS_PUB_KEY` só como fallback.
++//
++// Aqui dentro do `load_custom_client`, e não no `core_main`, porque há TRÊS
++// entradas de processo e só uma passa pelo `core_main`: o daemon de macOS
++// (`src/service.rs`) e o `initialize` do Flutter chamam esta função direto.
++// Sem isto, o daemon que roda como root fica com APP_NAME = "RustDesk" --
++// escreve os plists como `com.carriez.RustDesk_*` enquanto o app procura
++// `com.carriez.Nuxstep_*`, e `is_custom_client()` (que é literalmente
++// `get_app_name() != "RustDesk"`) devolve false, reabrindo nele a checagem de
++// atualização e a auto-atualização silenciosa contra o upstream.
++fn nuxstep_apply_branding() {
++    *config::APP_NAME.write().unwrap() = "Nuxstep".to_owned();
++    *config::PROD_RENDEZVOUS_SERVER.write().unwrap() = "rustdesk.nuxstep.com".to_owned();
++
++    // OVERWRITE_SETTINGS tem precedência sobre a config do usuário em
++    // `Config::get_option`, e `is_option_can_save` impede sobrescrever. É o
++    // que impede apontar uma máquina com acesso não supervisionado para outro
++    // servidor.
++    config::OVERWRITE_SETTINGS.write().unwrap().insert(
++        "key".to_owned(),
++        "CTa01Fxm258t5cOgoioGWvajCgsu18szRk+REbLG1XU=".to_owned(),
++    );
++}
++
+ pub fn load_custom_client() {
++    load_custom_client_upstream();
++    // Depois do upstream, para ter a última palavra.
++    nuxstep_apply_branding();
++}
++
++fn load_custom_client_upstream() {
+     #[cfg(debug_assertions)]
+     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
+         read_custom_client(data.trim());
