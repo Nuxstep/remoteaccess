@@ -516,6 +516,25 @@ jobs:
           fi
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
 
+      - name: Conferir a marca no bundle
+        # O PRODUCT_BUNDLE_IDENTIFIER do AppInfo.xcconfig e sobrescrito pelo
+        # project.pbxproj -- so o patch no pbxproj tem efeito. Conferir no
+        # produto, e nao confiar no patch, e o que pega esse tipo de defeito.
+        run: |
+          app="./flutter/build/macos/Build/Products/Release/${NUXSTEP_APP_NAME}.app"
+          plist="${app}/Contents/Info.plist"
+          nome="$(plutil -extract CFBundleName raw "$plist")"
+          ident="$(plutil -extract CFBundleIdentifier raw "$plist")"
+          echo "CFBundleName=${nome} CFBundleIdentifier=${ident}"
+          [ "${nome}" = "${NUXSTEP_APP_NAME}" ] ||
+            { echo "::error::CFBundleName e '${nome}'"; exit 1; }
+          [ "${ident}" = "com.nuxstep.remoteaccess" ] ||
+            { echo "::error::CFBundleIdentifier e '${ident}'"; exit 1; }
+          # O binario `service` so e copiado se o build.py enxergar o bundle
+          # com o nome novo (patch 0002).
+          test -x "${app}/Contents/MacOS/service"
+          cmp "${app}/Contents/Resources/AppIcon.icns" nuxstep/assets/icon.icns
+
       - name: Montar o dmg
         # O bundle se chama <APP_NAME>.app por causa do patch 0002 -- e tem de
         # se chamar: src/platform/macos.rs monta /Applications/<APP_NAME>.app.

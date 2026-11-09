@@ -47,7 +47,36 @@ Republicando a mesma tag, incremente `NUXSTEP_BUILD`.
 ### `0001-marca-e-servidor.patch`
 
 Define `APP_NAME`, `PROD_RENDEZVOUS_SERVER` e a chave pública do servidor em
-`OVERWRITE_SETTINGS`, logo depois do `load_custom_client()` do upstream.
+`OVERWRITE_SETTINGS`, **dentro do `load_custom_client()`**, depois do corpo original.
+
+O ponto de enganche é o que importa. Há **três entradas de processo** e só uma passa
+pelo `core_main()`:
+
+| Entrada | Processo |
+|---|---|
+| `src/core_main.rs` | o app |
+| `src/flutter_ffi.rs` → `initialize()` | a camada Flutter |
+| `src/service.rs` → `main()` | **o daemon de macOS, que roda como root** |
+
+As três chamam `load_custom_client()`; só a primeira chama `core_main()`. Com a marca
+no `core_main`, o daemon fica com `APP_NAME = "RustDesk"`, e três coisas quebram:
+
+1. `write_plists()` grava `/Library/LaunchAgents/com.carriez.RustDesk_server.plist`
+   enquanto o app procura `com.carriez.Nuxstep_server.plist` — **o acesso não
+   supervisionado não sobe**.
+2. `is_custom_client()` é literalmente `get_app_name() != "RustDesk"`. No daemon ele
+   devolve `false`, o que **reabre a checagem de atualização contra
+   `api.rustdesk.com` e a auto-atualização silenciosa como root** — o caminho que
+   substituiria o nosso cliente pelo RustDesk do upstream, com o servidor deles.
+3. O processo usa o servidor e a chave padrão.
+
+Nada disso aparece ao compilar: aparece na máquina do cliente. O teste de instalação
+tem de conferir o nome dos plists em `/Library/LaunchAgents` e `/Library/LaunchDaemons`.
+
+> A documentação oficial descreve injetar `RENDEZVOUS_SERVER` e `RS_PUB_KEY` por
+> variável de build. **Na 1.5.1 isso não existe**: as duas são `const` em
+> `libs/hbb_common/src/config.rs`, e o `option_env!` que os forks citam não está nesta
+> árvore. O caminho em runtime acima é o que funciona aqui.
 
 É código e não configuração porque o mecanismo oficial de *custom client* valida a
 config contra uma chave pública embutida da RustDesk (`read_custom_client` →
@@ -72,6 +101,13 @@ serviço** — o sintoma aparece só na máquina do cliente.
 O bundle identifier passa a ser nosso para que as permissões de Gravação de Tela e
 Acessibilidade sejam concedidas ao app da Nuxstep, e não compartilhadas com uma
 instalação do RustDesk na mesma máquina.
+
+**Não basta mudá-lo no `AppInfo.xcconfig`.** O `Info.plist` usa
+`$(PRODUCT_BUNDLE_IDENTIFIER)`, mas o `project.pbxproj` define esse mesmo ajuste
+literalmente nas três configurações de build, e o do `pbxproj` vence. Mudar só o
+xcconfig compila, passa e entrega um bundle com o identificador do RustDesk — foi o que
+aconteceu no primeiro build. Por isso o passo *Conferir a marca no bundle* lê o
+`Info.plist` do produto: a garantia é o que saiu, não o que o patch diz.
 
 ### O que NÃO é patch, de propósito
 
