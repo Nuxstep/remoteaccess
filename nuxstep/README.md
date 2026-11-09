@@ -138,6 +138,32 @@ escura. A de fundo branco tem o chevron preto, que some no modo escuro; a transp
 não tem chevron. O glifo é recomposto **dentro** do ladrilho de canto arredondado, com
 folga — arredondar a arte original cortaria as pontas do X.
 
+## Quando o upstream muda
+
+Há duas formas de quebrar, e a segunda é silenciosa:
+
+| Quebra | Quem acusa |
+|---|---|
+| O patch deixa de **aplicar** | `git apply --check`, no build e no vigia |
+| O patch aplica e deixa de **funcionar** | `nuxstep/invariantes.sh` |
+
+A segunda é o caso real: o efeito de um patch depende de como o upstream usa o que ele
+altera. `is_custom_client()` ser `get_app_name() != "RustDesk"` é o que faz definir
+`APP_NAME` desligar a auto-atualização contra o RustDesk; no dia em que isso virar outra
+coisa, o patch continua aplicando e o cliente volta a se atualizar sozinho para o
+upstream. O `invariantes.sh` confere 16 premissas dessas, cada uma com o que quebra se
+ela cair.
+
+Ele roda em dois momentos:
+
+- **em todo build**, dentro do `aplicar.sh`, antes dos patches — nenhum binário sai com
+  uma premissa quebrada;
+- **toda segunda-feira**, no workflow `nuxstep vigia upstream`, contra a **última tag
+  estável e a master do upstream**. A master é o aviso mais cedo possível, porque é lá
+  que a próxima tag nasce. O job falha, e a falha vira e-mail do GitHub.
+
+O vigia também avisa quando sai uma tag estável mais nova que a do `versao.env`.
+
 ## Limitações conhecidas
 
 **Sem assinatura de código.** No Windows o SmartScreen avisa na primeira execução; no

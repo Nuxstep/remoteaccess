@@ -1,0 +1,98 @@
+# Vigia o upstream: avisa quando uma mudanca lá quebra a nossa marca.
+#
+# Duas falhas diferentes, e a segunda e a que motiva este workflow:
+#   1. o patch deixa de aplicar  -> `git apply --check` acusa;
+#   2. o patch aplica e deixa de FUNCIONAR -> so `nuxstep/invariantes.sh` acusa,
+#      porque o efeito do patch depende de como o upstream usa o que ele altera.
+#
+# Falha deste job = notificacao por e-mail do GitHub para quem mexeu no cron.
+#
+# Somente leitura, sem credencial e sem executar codigo do upstream: os passos
+# apenas comparam arquivos.
+name: nuxstep vigia upstream
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # segunda, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vigia-upstream
+  cancel-in-progress: false
+
+jobs:
+  vigia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Buscar as tags do upstream
+        run: |
+          git remote add upstream https://github.com/rustdesk/rustdesk.git
+          git fetch --no-tags upstream 'refs/tags/*:refs/tags/upstream/*' --quiet
+          git fetch upstream master --quiet
+
+      - name: Ha tag nova?
+        id: tag
+        run: |
+          . nuxstep/versao.env
+          # Só tags de versão estável: nightly e fdroid-version não contam.
+          ultima="$(git tag -l 'upstream/[0-9]*.[0-9]*.[0-9]*' |
+            sed 's|^upstream/||' | sort -V | tail -1)"
+          echo "nossa=${UPSTREAM_TAG} ultima=${ultima}"
+          echo "ultima=${ultima}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Upstream"
+            echo "- compilando: \`${UPSTREAM_TAG}\`"
+            echo "- última tag estável: \`${ultima}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${UPSTREAM_TAG}" != "${ultima}" ]; then
+            echo "::notice::Saiu a tag ${ultima}; estamos em ${UPSTREAM_TAG}."
+          fi
+
+      - name: Os patches ainda aplicam?
+        run: |
+          echo "## Patches" >> "$GITHUB_STEP_SUMMARY"
+          falhou=0
+          # Contra a última tag E contra a master: a master é o aviso mais
+          # cedo possível, porque é lá que a próxima tag vai nascer.
+          for alvo in "refs/tags/upstream/${{ steps.tag.outputs.ultima }}" upstream/master; do
+            git worktree add --detach --quiet /tmp/alvo "${alvo}"
+            for p in "${GITHUB_WORKSPACE}"/nuxstep/patches/*.patch; do
+              nome="$(basename "${p}")"
+              if git -C /tmp/alvo apply --check "${p}" 2>/dev/null; then
+                echo "- \`${nome}\` aplica em \`${alvo}\`" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "- **\`${nome}\` NAO aplica em \`${alvo}\`**" >> "$GITHUB_STEP_SUMMARY"
+                echo "::error::${nome} nao aplica em ${alvo}"
+                falhou=1
+              fi
+            done
+            git worktree remove --force /tmp/alvo
+          done
+          exit "${falhou}"
+
+      - name: As premissas do upstream continuam de pe?
+        if: always()
+        run: |
+          echo "## Premissas" >> "$GITHUB_STEP_SUMMARY"
+          falhou=0
+          for alvo in "refs/tags/upstream/${{ steps.tag.outputs.ultima }}" upstream/master; do
+            echo "### \`${alvo}\`" >> "$GITHUB_STEP_SUMMARY"
+            git worktree add --detach --quiet /tmp/alvo "${alvo}"
+            cp -r "${GITHUB_WORKSPACE}/nuxstep" /tmp/alvo/nuxstep
+            echo "-- ${alvo}"
+            bash /tmp/alvo/nuxstep/invariantes.sh || falhou=1
+            git worktree remove --force /tmp/alvo
+          done
+          if [ "${falhou}" -ne 0 ]; then
+            echo "::error::Premissas do upstream mudaram. Os patches podem aplicar limpo e ainda assim nao funcionar -- ver nuxstep/README.md."
+          fi
+          exit "${falhou}"
