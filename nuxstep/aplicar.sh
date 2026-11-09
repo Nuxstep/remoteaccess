@@ -37,6 +37,11 @@ ${alheio}"
 
 log "versão ${VERSAO} sobre a tag ${UPSTREAM_TAG}"
 
+# Antes de aplicar: as premissas do upstream de que os patches dependem. Um
+# patch pode aplicar limpo e mesmo assim não fazer efeito.
+bash nuxstep/invariantes.sh --silencioso ||
+	die "as premissas do upstream mudaram; rode ./nuxstep/invariantes.sh para o detalhe"
+
 # ------------------------------------------------------------------- patches
 
 shopt -s nullglob
