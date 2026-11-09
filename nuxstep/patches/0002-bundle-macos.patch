@@ -1,0 +1,32 @@
+diff --git a/build.py b/build.py
+index 1270b739..b6c314ee 100755
+--- a/build.py
++++ b/build.py
+@@ -946,7 +946,8 @@ def build_flutter_dmg(version, features):
+     mac_arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x86_64'
+     system2(
+         f'FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
+-    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
++    # Nuxstep: PRODUCT_NAME e Nuxstep, entao o bundle se chama Nuxstep.app.
++    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/Nuxstep.app/Contents/MacOS/')
+     '''
+     system2(
+         "create-dmg --volname \"RustDesk Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon RustDesk.app 200 190 --hide-extension RustDesk.app rustdesk.dmg ./build/macos/Build/Products/Release/RustDesk.app")
+diff --git a/flutter/macos/Runner/Configs/AppInfo.xcconfig b/flutter/macos/Runner/Configs/AppInfo.xcconfig
+index 4c6b155d..e2cd52a2 100644
+--- a/flutter/macos/Runner/Configs/AppInfo.xcconfig
++++ b/flutter/macos/Runner/Configs/AppInfo.xcconfig
+@@ -5,10 +5,10 @@
+ // 'flutter create' template.
+ 
+ // The application's name. By default this is also the title of the Flutter window.
+-PRODUCT_NAME = RustDesk
++PRODUCT_NAME = Nuxstep
+ 
+ // The application's bundle identifier
+-PRODUCT_BUNDLE_IDENTIFIER = com.carriez.flutterHbb
++PRODUCT_BUNDLE_IDENTIFIER = com.nuxstep.remoteaccess
+ 
+ // The copyright displayed in application information
+-PRODUCT_COPYRIGHT = Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved.
++PRODUCT_COPYRIGHT = Copyright © 2026 Nuxstep. Todos os direitos reservados.

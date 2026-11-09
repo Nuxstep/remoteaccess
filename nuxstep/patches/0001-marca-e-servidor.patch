@@ -1,0 +1,51 @@
+diff --git a/src/core_main.rs b/src/core_main.rs
+index 19a26703..50400b1a 100644
+--- a/src/core_main.rs
++++ b/src/core_main.rs
+@@ -36,6 +36,38 @@ fn finish_macos_update(result: hbb_common::ResultType<()>) -> Option<CoreMainAct
+     }
+ }
+ 
++// ---------------------------------------------------------------------------
++// Nuxstep: marca e servidor próprio.
++//
++// Por que em código e não por configuração: o mecanismo oficial de "custom
++// client" valida a config contra uma chave pública embutida da RustDesk
++// (`read_custom_client` -> `sign::verify` em src/common.rs), então só a
++// RustDesk Pro emite config aceita. Servidor e chave entram aqui.
++//
++// Por que não patchar o `hbb_common`: ele é submódulo git, e alterá-lo
++// exigiria um segundo fork para manter. `APP_NAME` e `PROD_RENDEZVOUS_SERVER`
++// são `RwLock` graváveis em runtime, e a chave é lida da opção `key` com
++// `RS_PUB_KEY` apenas como fallback — tudo alcançável daqui.
++//
++// Chamada depois de `load_custom_client()` de propósito: é o mesmo momento em
++// que o upstream aplica a config de marca, e garante que o que está abaixo
++// tem a última palavra.
++#[cfg(not(any(target_os = "android", target_os = "ios")))]
++fn nuxstep_apply_branding() {
++    *config::APP_NAME.write().unwrap() = "Nuxstep".to_owned();
++    *config::PROD_RENDEZVOUS_SERVER.write().unwrap() = "rustdesk.nuxstep.com".to_owned();
++
++    // OVERWRITE_SETTINGS tem precedência sobre a config do usuário em
++    // `Config::get_option` (e `is_option_can_save` impede sobrescrever), então
++    // a chave do servidor não pode ser trocada por quem usa o cliente. Isso é
++    // o que impede apontar uma máquina com acesso não supervisionado para
++    // outro servidor — não é conveniência, é controle.
++    config::OVERWRITE_SETTINGS.write().unwrap().insert(
++        "key".to_owned(),
++        "CTa01Fxm258t5cOgoioGWvajCgsu18szRk+REbLG1XU=".to_owned(),
++    );
++}
++
+ /// shared by flutter and sciter main function
+ ///
+ /// [Note]
+@@ -47,6 +79,7 @@ pub fn core_main() -> Option<CoreMainAction> {
+         return None;
+     }
+     crate::load_custom_client();
++    nuxstep_apply_branding();
+     #[cfg(windows)]
+     if !crate::platform::windows::bootstrap() {
+         // return None to terminate the process
