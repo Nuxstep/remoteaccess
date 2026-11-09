@@ -1,0 +1,2 @@
+# O .gitignore do upstream exclui *png na raiz; a arte da marca e versionada.
+!*png
