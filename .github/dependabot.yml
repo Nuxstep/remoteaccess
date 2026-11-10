@@ -1,0 +1,14 @@
+version: 2
+
+# Só `github-actions`. As dependências de código vêm do upstream e são
+# atualizadas com a tag que compilamos; abrir PR de cargo/npm aqui seria
+# divergir do upstream, não manter.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
