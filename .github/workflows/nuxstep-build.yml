@@ -542,22 +542,67 @@ jobs:
         # danificado". Reassinar aqui e o unico ponto possivel -- depois disso
         # o dmg so empacota.
         #
-        # O `--verify` no fim nao e redundante: nada no pipeline conferia o
-        # selo, e foi por isso que um dmg quebrado chegou ao cliente. Tem de
-        # falhar o build.
+        # --deep, e nao assinar o `service` isolado: o selo do bundle sela o
+        # conteudo de Contents/, entao acrescentar um executavel exige refazer
+        # o CodeResources do bundle inteiro.
+        #
+        # disable-library-validation nao e folga: sem certificado, a assinatura
+        # e ad-hoc e nao tem Team ID. O hardened runtime (--options runtime,
+        # herdado do build de release) liga a library validation, que exige Team
+        # ID igual entre o executavel e cada biblioteca -- e recusa TODAS,
+        # comecando pelo FlutterMacOS.framework. Com selo valido e sem este
+        # entitlement o app nao diz mais "danificado": morre no dyld.
         #
         # O get-task-allow vem do proprio Xcode no build de release e sozinho
         # faz a notarizacao ser recusada; sai aqui para o bundle ficar
         # notarizavel no dia em que houver Developer ID.
         run: |
           app="./flutter/build/macos/Build/Products/Release/${NUXSTEP_APP_NAME}.app"
-          codesign -d --entitlements :- "$app" > ent.plist
-          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" ent.plist 2>/dev/null || true
-          codesign --force --sign - --options runtime --timestamp=none \
-            "${app}/Contents/MacOS/service"
-          codesign --force --sign - --options runtime --timestamp=none \
-            --entitlements ent.plist "$app"
+          ent="${RUNNER_TEMP}/ent.plist"
+          codesign -d --entitlements :- "$app" > "$ent"
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "$ent" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$ent"
+          codesign --force --deep --sign - --options runtime --timestamp=none \
+            --entitlements "$ent" "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Provar que o app executa
+        # Selo fechado nao e app que funciona. Os dois defeitos do dmg anterior
+        # passaram por aqui porque nada no pipeline tentava abrir o app: o
+        # primeiro (selo quebrado) escondia o segundo (dyld recusando as
+        # bibliotecas por falta de Team ID), e nenhum dos dois aparece em
+        # `codesign --verify`. Carregar o binario de verdade e o unico criterio
+        # que cobre os dois: falha de dyld acontece antes do main, e um app que
+        # continua vivo depois da janela abaixo carregou todas as bibliotecas.
+        run: |
+          app="./flutter/build/macos/Build/Products/Release/${NUXSTEP_APP_NAME}.app"
+          ents="$(codesign -d --entitlements :- "$app" 2>/dev/null)"
+          case "${ents}" in
+            *com.apple.security.cs.disable-library-validation*) ;;
+            *) echo "::error::falta disable-library-validation: a assinatura ad-hoc nao carrega biblioteca"; exit 1 ;;
+          esac
+          case "${ents}" in
+            *get-task-allow*) echo "::error::get-task-allow sobrou no bundle"; exit 1 ;;
+          esac
+          # Nao existe `timeout` no macOS: o app vai para segundo plano e o
+          # teste e ele estar vivo no fim da espera.
+          log="${RUNNER_TEMP}/execucao.log"
+          "${app}/Contents/MacOS/${NUXSTEP_APP_NAME}" >"${log}" 2>&1 &
+          pid=$!
+          sleep 20
+          vivo=0
+          if kill -0 "${pid}" 2>/dev/null; then vivo=1; fi
+          kill -9 "${pid}" 2>/dev/null || true
+          wait "${pid}" 2>/dev/null || true
+          echo "--- saida do app ---"
+          cat "${log}" || true
+          echo "--- fim ---"
+          if grep -qE 'Library not loaded|different Team IDs|Symbol not found|no cache image with|Code Signature Invalid' "${log}"; then
+            echo "::error::o app nao carregou: erro de carregamento na saida acima"
+            exit 1
+          fi
+          [ "${vivo}" = 1 ] ||
+            { echo "::error::o app morreu antes de 20s; veja a saida acima"; exit 1; }
 
       - name: Montar o dmg
         # O bundle se chama <APP_NAME>.app por causa do patch 0002 -- e tem de
