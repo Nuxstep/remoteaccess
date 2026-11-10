@@ -535,6 +535,30 @@ jobs:
           test -x "${app}/Contents/MacOS/service"
           cmp "${app}/Contents/Resources/AppIcon.icns" nuxstep/assets/icon.icns
 
+      - name: Reassinar o bundle
+        # O build.py copia `service` para Contents/MacOS DEPOIS de o Xcode ter
+        # assinado o bundle, e o selo nao cobre arquivo novo: o CodeResources
+        # fica sem a entrada e o macOS recusa o app como "modificado ou
+        # danificado". Reassinar aqui e o unico ponto possivel -- depois disso
+        # o dmg so empacota.
+        #
+        # O `--verify` no fim nao e redundante: nada no pipeline conferia o
+        # selo, e foi por isso que um dmg quebrado chegou ao cliente. Tem de
+        # falhar o build.
+        #
+        # O get-task-allow vem do proprio Xcode no build de release e sozinho
+        # faz a notarizacao ser recusada; sai aqui para o bundle ficar
+        # notarizavel no dia em que houver Developer ID.
+        run: |
+          app="./flutter/build/macos/Build/Products/Release/${NUXSTEP_APP_NAME}.app"
+          codesign -d --entitlements :- "$app" > ent.plist
+          /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" ent.plist 2>/dev/null || true
+          codesign --force --sign - --options runtime --timestamp=none \
+            "${app}/Contents/MacOS/service"
+          codesign --force --sign - --options runtime --timestamp=none \
+            --entitlements ent.plist "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
       - name: Montar o dmg
         # O bundle se chama <APP_NAME>.app por causa do patch 0002 -- e tem de
         # se chamar: src/platform/macos.rs monta /Applications/<APP_NAME>.app.
